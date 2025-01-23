@@ -1,0 +1,217 @@
+from tkinter import *
+
+root = Tk()
+root.geometry("1270x690+0+0")
+root.resizable(0,0)
+root.title("RESTAURANT MANAGEMENT SYSTEM")
+root.config(bg = "firebrick4")
+
+top_frame = Frame(root, bd=10, relief=RIDGE, bg="firebrick4")
+top_frame.pack(side = TOP)
+
+labeltitle = Label(top_frame, text="RESTAURANT MANAGEMENT SYSTEM", bd=10, font=("verdana", 30, "bold"), fg="saddle brown", bg="ghost white", width=int(44))
+labeltitle.grid(row = 0, column = 0)
+
+menu_frame = Frame(root, bd=10, relief = RIDGE, bg="firebrick4")
+menu_frame.pack(side = LEFT)
+
+#frames inside the menu_frame
+cost_frame = Frame(menu_frame, bd=5, relief=RIDGE)
+cost_frame.pack(side=BOTTOM)
+
+food_frame = LabelFrame(menu_frame, text="Food", font=("verdana", 20, "bold"), relief=RIDGE, bd=10, fg="red4")
+food_frame.pack(side=LEFT)
+
+drinks_frame = LabelFrame(menu_frame, text="Drinks", font=("verdana", 20, "bold"), relief=RIDGE, bd=10, fg="red4")
+drinks_frame.pack(side=LEFT)
+
+cakes_frame = LabelFrame(menu_frame, text="Cakes", font=("verdana", 20), relief=RIDGE, bd=10)
+cakes_frame.pack(side=LEFT)
+
+#create the right_frame which contains the calculator, receipt and button frames
+right_frame = Frame(root, bd=10,  relief=RIDGE)
+right_frame.pack(side=RIGHT)
+
+#create the frames inside the right_frame
+calculator_frame = Frame(right_frame, bd=2, relief=RIDGE)
+calculator_frame.pack()
+
+receipt_frame = Frame(right_frame, bd=5, relief=RIDGE)
+receipt_frame.pack()
+
+button_frame = Frame(right_frame, bd=2, relief=RIDGE)
+button_frame.pack()
+
+#create the variables for food checkbuttons
+v1 = IntVar()
+v2 = IntVar()
+v3 = IntVar()
+v4 = IntVar()
+v5 = IntVar()
+v6 = IntVar()
+v7 = IntVar()
+v8 = IntVar()
+v9 = IntVar()
+v10 = IntVar()
+
+#create the variables for food entry fields
+burger1 = StringVar()
+pizza1 = StringVar()
+omellete1 = StringVar()
+fries1 = StringVar()
+salad1 = StringVar()
+samosa1 = StringVar()
+biryani1 = StringVar()
+sushi1 = StringVar()
+pasta1 = StringVar()
+sandwich1 = StringVar()
+
+#create food checkbuttons
+burger = Checkbutton(food_frame, text="Burger", font=("verdana",12, "bold"), onvalue=1, offvalue=0, variable=v1)
+burger.grid(row = 0, column = 0, sticky = W)
+
+pizza = Checkbutton(food_frame, text="Pizza", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v2)
+pizza.grid(row = 1, column = 0, sticky = W)
+
+omellete = Checkbutton(food_frame, text="Omellete", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v3)
+omellete.grid(row = 2, column = 0, sticky = W)
+
+fries = Checkbutton(food_frame, text="Fries", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v4)
+fries.grid(row = 3, column = 0, sticky = W)
+
+salad = Checkbutton(food_frame, text="Salad", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v5)
+salad.grid(row = 4, column = 0, sticky = W)
+
+samosas = Checkbutton(food_frame, text="Samosas", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v6)
+samosas.grid(row = 5, column = 0, sticky = W)
+
+biryani = Checkbutton(food_frame, text="Biryani", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v7)
+biryani.grid(row = 6, column = 0, sticky = W)
+
+sushi = Checkbutton(food_frame, text="Sushi", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v8)
+sushi.grid(row = 7, column = 0, sticky = W)
+
+pasta = Checkbutton(food_frame, text="Pasta", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v9)
+pasta.grid(row = 8, column = 0, sticky = W)
+
+sandwich = Checkbutton(food_frame, text="Sandwich", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v10)
+sandwich.grid(row = 9, column = 0, sticky = W)
+
+#create food entry fields
+entry_burger = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=burger1)
+entry_burger.grid(row = 0, column = 1)
+
+entry_pizza = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=pizza1)
+entry_pizza.grid(row = 1, column = 1)
+
+entry_omellete = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=omellete1)
+entry_omellete.grid(row = 2, column = 1)
+
+entry_fries = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=fries1)
+entry_fries.grid(row = 3, column = 1)
+
+entry_salad = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=salad1)
+entry_salad.grid(row = 4, column = 1)
+
+entry_samosa = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=samosa1)
+entry_samosa.grid(row = 5, column = 1)
+
+entry_biryani = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=biryani1)
+entry_biryani.grid(row = 6, column = 1)
+
+entry_sushi = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=sushi1)
+entry_sushi.grid(row = 7, column = 1)
+
+entry_pasta = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=pasta1)
+entry_pasta.grid(row = 8, column = 1)
+
+entry_sandwich = Entry(food_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=sandwich1)
+entry_sandwich.grid(row = 9, column = 1)
+
+#create the variables for drinks checkbuttons
+v11 = IntVar()
+v12 = IntVar()
+v13 = IntVar()
+v14 = IntVar()
+v15 = IntVar()
+v16 = IntVar()
+v17 = IntVar()
+v18 = IntVar()
+v19 = IntVar()
+v20 = IntVar()
+
+#create the variables for drinks entry fields
+coffee1 = StringVar()
+tea1 = StringVar()
+juice1 = StringVar()
+soda1 = StringVar()
+water1 = StringVar()
+cocktail1 = StringVar()
+lemonade1 = StringVar()
+beer1 = StringVar()
+cider1 = StringVar()
+whiskey1 = StringVar()
+
+#create drinks checkbuttons
+coffee = Checkbutton(drinks_frame, text="Coffee", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v11)
+coffee.grid(row = 0, column = 0, sticky = W)
+
+tea = Checkbutton(drinks_frame, text="Tea", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v12)
+tea.grid(row = 1, column = 0, sticky = W)
+
+juice = Checkbutton(drinks_frame, text="Juice", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v13)
+juice.grid(row = 2, column = 0, sticky = W)
+
+soda = Checkbutton(drinks_frame, text="Soda", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v14)
+soda.grid(row = 3, column = 0, sticky = W)
+
+water = Checkbutton(drinks_frame, text="Water", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v15)
+water.grid(row = 4, column = 0, sticky = W)
+
+cocktail = Checkbutton(drinks_frame, text="Cocktail", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v16)
+cocktail.grid(row = 5, column = 0, sticky = W)
+
+lemonade = Checkbutton(drinks_frame, text="Lemonade", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v17)
+lemonade.grid(row = 6, column = 0, sticky = W)
+
+beer = Checkbutton(drinks_frame, text="Beer", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v18)
+beer.grid(row = 7, column = 0, sticky = W)
+
+cider = Checkbutton(drinks_frame, text="Cider", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v19)
+cider.grid(row = 8, column = 0, sticky = W)
+
+whiskey = Checkbutton(drinks_frame, text="Whiskey", font=("verdana", 12, "bold"), onvalue=1, offvalue=0, variable=v20)
+whiskey.grid(row = 9, column = 0, sticky = W)
+
+#create drinks entry fields
+entry_coffee = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=coffee1)
+entry_coffee.grid(row = 0, column = 1)
+
+entry_tea = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=tea1)
+entry_tea.grid(row = 1, column = 1)
+
+entry_juice = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=juice1)
+entry_juice.grid(row = 2, column = 1)
+
+entry_soda = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=soda1)
+entry_soda.grid(row = 3, column = 1)
+
+entry_water = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=water1)
+entry_water.grid(row = 4, column = 1)
+
+entry_coctail= Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=cocktail1)
+entry_coctail.grid(row = 5, column = 1)
+
+entry_lemonade = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=lemonade1)
+entry_lemonade.grid(row = 6, column = 1)
+
+entry_beer = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=beer1)
+entry_beer.grid(row = 7, column = 1)
+
+entry_cider = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=cider1)
+entry_cider.grid(row = 8, column = 1)
+
+entry_whiskey = Entry(drinks_frame, font=("verdana", 12, "bold"), state=DISABLED, bd=5, width=5, textvariable=whiskey1)
+entry_whiskey.grid(row = 9, column = 1)
+
+root.mainloop()
