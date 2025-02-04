@@ -6,6 +6,8 @@ root = Tk()
 root.geometry("1600x800+0+0")
 root.title("RESTAURANT MANAGEMENT SYSTEM")
 
+text_input = StringVar()
+
 # create frames
 frame = Frame(root, width=1600, height=50, bg="powder blue", relief=SUNKEN)
 frame.pack(side=TOP)
@@ -16,14 +18,76 @@ frame1.pack(side=LEFT)
 frame2 = Frame(root, width=300, height=700, bg="powder blue", relief=SUNKEN)
 frame2.pack(side=RIGHT)
 
+#============================time=======================================================================================
 # create localtime variable
 localtime = time.asctime(time.localtime(time.time()))
 
+#============================info=======================================================================================
 # create labels
 lbltitle = Label(frame, text="Restaurant Management System", font=("verdana", 50, "bold"), fg="steel blue", bd=10)
 lbltitle.grid(row=0)
 
 lbltime = Label(frame, text=localtime, font=("verdana", 20, "bold"), fg="steel blue", bd=10)
 lbltime.grid(row=1)
+
+#============================calculator=================================================================================
+operator = ""
+def btnclick(number):
+    global operator
+    operator = operator + str(number)
+    text_input.set(operator)
+
+# create entry field for calculator
+txtdisplay = Entry(frame2, font=("verdana", 20, "bold"), textvariable = text_input, bd=30, insertwidth=2, bg="powder blue", justify="right")
+txtdisplay.grid(columnspan=4)
+
+# create calculator buttons
+btn7 = Button(frame2, text="7", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(7))
+btn7.grid(row = 2, column = 0)
+
+btn8 = Button(frame2, text="8", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(8))
+btn8.grid(row = 2, column = 1)
+
+btn9 = Button(frame2, text="9", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(9))
+btn9.grid(row = 2, column = 2)
+
+addition = Button(frame2, text="+", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick("+"))
+addition.grid(row = 2, column = 3)
+#=======================================================================================================================
+btn4 = Button(frame2, text="4", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(4))
+btn4.grid(row = 3, column = 0)
+
+btn5 = Button(frame2, text="5", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(5))
+btn5.grid(row = 3, column = 1)
+
+btn9 = Button(frame2, text="6", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(6))
+btn9.grid(row = 3, column = 2)
+
+subtraction = Button(frame2, text="-", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick("-"))
+subtraction.grid(row = 3, column = 3)
+#=======================================================================================================================
+btn1 = Button(frame2, text="1", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(1))
+btn1.grid(row = 4, column = 0)
+
+btn2 = Button(frame2, text="2", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(2))
+btn2.grid(row = 4, column = 1)
+
+btn3 = Button(frame2, text="3", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(3))
+btn3.grid(row = 4, column = 2)
+
+multiplication = Button(frame2, text="x", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick("x"))
+multiplication.grid(row = 4, column = 3)
+#=======================================================================================================================
+btn0 = Button(frame2, text="0", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(0))
+btn0.grid(row = 5, column = 0)
+
+clear = Button(frame2, text="8", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(8))
+clear.grid(row = 5, column = 1)
+
+equals = Button(frame2, text="9", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick(9))
+equals.grid(row = 5, column = 2)
+
+division = Button(frame2, text="/", bd=8, font=("verdana", 20, "bold"), padx=16, pady=16, fg="black", bg="powder blue", command=lambda :btnclick("/"))
+division.grid(row = 5, column = 3)
 
 root.mainloop()
