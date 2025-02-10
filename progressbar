@@ -1,0 +1,42 @@
+from tkinter import *
+from tkinter import ttk
+from tkinter.ttk import Progressbar
+import tkinter as tk
+
+root = Tk()
+root.geometry("400x400")
+root.configure(bg="aqua")
+
+i = 0
+def start():
+    global i
+    if i <= 10:
+        txt = "Loading......" + (str(10 * i) + "%")
+        dsp_label.config(text=txt)
+        dsp_label.after(1000, start)
+
+        my_progressbar ["value"] = 10 * i
+        i += 1
+    else:
+        stop()
+
+def stop():
+    my_progressbar.stop()
+
+
+frame = tk.Frame(root)
+frame.pack(pady=20)
+
+title_label = tk.Label(frame, text="PROGRESSBAR 3", font=("verdana", 30, "bold"))
+title_label.pack()
+
+my_progressbar = Progressbar(root, orient=HORIZONTAL, mode="determinate", length=300)
+my_progressbar.pack(pady=20)
+
+button = Button(root, text="Start", font=("verdana", 15, "bold italic"), command=start)
+button.pack(pady=20)
+
+dsp_label = Label(root, text="", font=("verdana", 10, "bold italic"))
+dsp_label.pack(pady=20)
+
+root.mainloop()
