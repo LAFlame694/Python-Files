@@ -1,0 +1,29 @@
+import random
+
+number_to_guess = random.randint(1, 100) # generate a random number
+while True: # loop
+   try:
+     guess = int(input("Guess the number between 1 and 100:"))  # ask the user to make a guess
+     if guess < number_to_guess:
+         # if number < guess
+         # print too low
+        print("Too low!")
+     elif guess > number_to_guess:
+         # if number > guess
+         # print too high
+        print("Too high")
+     else:
+         # else:
+         # print well done
+        print("Congratulations!! You guessed the right number")
+        break
+   except ValueError:
+       # if not a valid number
+       # print an error
+     print("Please enter a valid number!")
+
+
+
+
+
+
