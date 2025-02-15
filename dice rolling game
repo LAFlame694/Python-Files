@@ -1,0 +1,19 @@
+import random
+# loop
+while True:
+   choice = input("Roll the dice? (y/n):").lower() # ask roll the dice
+
+   if choice == "y": # if user enters y
+
+       # generate three random numbers
+      die1 = random.randint(1, 6)
+      die2 = random.randint(1, 6)
+      die3 = random.randint(1, 6)
+      print(f"{die1}, {die2}, {die3}") # print them
+
+   elif choice == "n": # if user enters n
+      print("Thanks for playing!") # print thank you message
+      break  # terminate
+
+   else:
+       print("Invalid choice!")  # print invalid choice
