@@ -1,0 +1,368 @@
+from binance.client import Client
+import numpy as np
+import time
+import requests
+import logging
+import smtplib
+from email.message import EmailMessage
+from decimal import Decimal, ROUND_DOWN
+import os
+from dotenv import load_dotenv
+from binance.exceptions import BinanceAPIException
+from datetime import datetime, timedelta
+
+# === Load environment variables ===
+load_dotenv()
+
+API_KEY = os.getenv('BINANCE_API_KEY')
+SECRET_KEY = os.getenv('BINANCE_SECRET_KEY')
+EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
+
+# === Validation Step: Ensure all credentials are loaded ===
+if not API_KEY or not SECRET_KEY:
+    raise ValueError("⚠️ Binance API key and/or secret key are not set in the environment variables. Exiting...")
+
+if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+    raise ValueError("⚠️ Email credentials are not set in the environment variables. Exiting...")
+
+# === Global variables for Email alerts cooldown ===
+last_buy_alert_time = None
+last_sell_alert_time = None
+alert_cooldown = timedelta(minutes = 15) # Cooldown period for email alerts (15 minutes)
+
+# === Email Alerts ===
+def send_email(subject, body, signal_type):
+    global last_buy_alert_time, last_sell_alert_time
+
+    now = datetime.now()
+
+    # check cooldown for buy or sell signals
+    if signal_type == "buy":
+        if last_buy_alert_time and now - last_buy_alert_time < alert_cooldown:
+            print("⚠️ Buy alert skipped due to cooldown.")
+            logging.info("Buy alert skipped due to cooldown.")
+            return
+        last_buy_alert_time = now
+
+    elif signal_type == "sell":
+        if last_sell_alert_time and now - last_sell_alert_time < alert_cooldown:
+            print("⚠️ Sell alert skipped due to cooldown.")
+            logging.info("Sell alert skipped due to cooldown.")
+            return
+        last_sell_alert_time = now
+
+    # Prepare and send the email
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = EMAIL_ADDRESS
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+        print(f"Email alert sent: {subject}")
+        logging.info(f"Email alert sent: {subject}")
+
+    except Exception as e:
+        print(f"⚠️ Failed to send email: {e}")
+        logging.error(f"Failed to send email: {e}")
+
+# === ✅ Configure logging ===
+logging.basicConfig(
+    filename="trading_bot_log.txt",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+try:
+    client = Client(API_KEY, SECRET_KEY)
+    client.API_URL = "https://testnet.binance.vision/api"
+    print("Binance connection established.")
+    logging.info("Binance connection established.")
+except requests.exceptions.ConnectionError:
+    print("⚠️ No internet connection. Binance API not available.")
+    logging.warning("No internet connection. Binance API not available.")
+    client = None
+
+symbol = "ETHUSDT"
+risk_percent = 0.01 # 1% of balance
+min_signal_strength = 0.005  # 0.5% of current price
+stop_loss_percent = 0.01
+take_profit_percent = 0.02
+entry_price = None
+
+# === Connectivity Check ===
+def is_connected():
+    try:
+        requests.get("https://www.google.com/", timeout=3)
+
+        return True
+
+    except requests.ConnectionError:
+
+        return False
+
+# === Price Fetch with Rate Limit Handling ===
+def get_current_price(symbol, retries=5):
+    for attempt in range(retries):
+        try:
+            ticker = client.get_symbol_ticker(symbol=symbol)
+            return float(ticker['price'])
+
+        except BinanceAPIException as e:
+            if e.status_code == 429:  # HTTP 429: Too Many Requests
+                print("⚠️ Rate limit exceeded. Retrying...")
+                logging.warning("Rate limit exceeded. Retrying...")
+                time.sleep(2)  # Short pause before retry
+            else:
+                print(f"Binance API Exception: {e}")
+                logging.error(f"Binance API Exception: {e}")
+                break
+
+        except Exception as e:
+            print(f"Error fetching price: {e}")
+            logging.error(f"Error fetching price: {e}")
+            break
+
+    return None
+
+# === SMA Calculation with Rate Limit Handling ===
+def get_moving_averages(symbol, interval='1m', limit=20, retries=5):
+    for attempt in range(retries):
+        try:
+            candles = client.get_klines(symbol=symbol, interval=interval, limit=limit)
+            closes = [float(candle[4]) for candle in candles]
+            short_sma = np.mean(closes[-5:])
+            long_sma = np.mean(closes[-10:])
+            return short_sma, long_sma
+
+        except BinanceAPIException as e:
+            if e.status_code == 429:  # HTTP 429: Too Many Requests
+                wait_time = 2 ** attempt  # Exponential backoff
+                print(f"⚠️ Rate limit exceeded. Retrying in {wait_time} seconds...")
+                logging.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"Binance API Exception: {e}")
+                logging.error(f"Binance API Exception: {e}")
+                break
+
+        except Exception as e:
+            print(f"Error fetching moving averages: {e}")
+            logging.error(f"Error fetching moving averages: {e}")
+            break
+
+    return None, None
+
+# === Calculate Quantity ===
+def calculate_quantity(symbol, price):
+    try:
+        # fetch balance
+        balance = client.get_asset_balance('USDT')
+        free_balance = float(balance['free'])
+        risk_amount = free_balance * risk_percent
+
+        # calculate raw quantity
+        raw_quantity = risk_amount / price # Divide the risk_amount by the current asset price to get how many units of ETH you can buy
+
+        # fetch symbol info
+        info = client.get_symbol_info(symbol)
+        if not info:
+            print(f"⚠️ Unable to fetch symbol info for {symbol}. Skipping trade.")
+            logging.warning("Unable to fetch symbol info for {symbol}. Skipping trade.")
+
+            return None
+
+        # Extract filters
+        step_size = 0.0001 # Default step size
+        min_notional = 5 # Default minimum notional value
+        for f in info['filters']:
+            if f['filterType'] == 'LOT_SIZE':
+                step_size = float(f['stepSize'])
+            elif f['filterType'] == 'MIN_NOTIONAL':
+                min_notional = float(f['minNotional'])
+
+        # Adjust quantity based on step size
+        precision = int(round(-np.log10(step_size)))
+        quantity = float(Decimal(str(raw_quantity)).quantize(Decimal('1e-{0}'.format(precision)), rounding=ROUND_DOWN))
+
+        # Validate notional value
+        notional_value = quantity * price
+        if notional_value < min_notional:
+            print(f"⚠️ Quantity too small (${notional_value:.2f} < ${min_notional:.2f})")
+            logging.warning(f"⚠️ Quantity too small (${notional_value:.2f} < ${min_notional:.2f})")
+
+            return None
+
+        return quantity
+    except BinanceAPIException as e:
+        print(f"Binance API Exception: {e}")
+        logging.error(f"Binance API Exception: {e}")
+
+    except Exception as e:
+        print(f"Error calculating quantity: {e}")
+        logging.error(f"Error calculating quantity: {e}")
+        return None
+
+# === Place Buy Order ===
+# === Place Buy Order ===
+def place_buy_order(symbol, quantity):
+    try:
+        order = client.order_market_buy(symbol=symbol, quantity=quantity)
+        print(f"Buy order done: {order}")
+
+        price = float(order['fills'][0]['price'])
+        cost = price * quantity
+        fee = cost * 0.001  # 0.1% fee
+        total_cost = cost + fee
+
+        print(f"Buy Price: {price:.2f} | Fee: {fee:.4f} USDT | Total Cost: {total_cost:.4f} USDT")
+        logging.info(f"BUY order at {price}, quantity: {quantity}, fee: {fee:.4f}, total cost: {total_cost:.4f}")
+
+        return order  # Properly indented to be part of the try block
+
+    except requests.exceptions.ConnectionError:
+        print("No internet connection when placing buy order.")
+        logging.warning("No internet connection when placing buy order.")
+    except Exception as e:
+        print(f"Error placing buy order: {e}")
+        logging.error(f"Error placing buy order: {e}")
+
+    return None  # None is returned if any exception occurs
+
+
+# === Place Sell Order ===
+def place_sell_order(symbol, quantity):
+    try:
+        order = client.order_market_sell(symbol=symbol, quantity=quantity)
+        print(f"Sell order done: {order}")
+
+        price = float(order['fills'][0]['price'])
+        revenue = price * quantity
+        fee = revenue * 0.001  # 0.1% fee
+        net_revenue = revenue - fee
+
+        print(f"Sell Price: {price:.2f} | Fee: {fee:.4f} USDT | Net Revenue: {net_revenue:.4f} USDT")
+        logging.info(f"SELL order at {price}, quantity: {quantity}, fee: {fee:.4f}, net revenue: {net_revenue:.4f}")
+
+        return order
+
+    except requests.exceptions.ConnectionError:
+        print("No internet connection when placing sell order.")
+        logging.warning("No internet connection when placing sell order.")
+    except Exception as e:
+        print(f"Error placing sell order: {e}")
+        logging.error(f"Error placing sell order: {e}")
+
+    return None  # None is returned if any exception occurs
+
+def trading_bot():
+    global entry_price
+    in_position = False
+
+    while True:
+        try:
+            if not is_connected():
+                print("No internet connection. Waiting 60 seconds...")
+                logging.warning("No internet connection. Retrying in 60 seconds.")
+                time.sleep(60)
+                continue
+
+            price = get_current_price(symbol)
+            short_sma, long_sma = get_moving_averages(symbol)
+
+            if price is None or short_sma is None or long_sma is None:
+                print("Missing data. Skipping this cycle.")
+                logging.warning("Missing data. Skipping cycle.")
+                time.sleep(60)
+                continue
+
+            required_sma_gap = min_signal_strength * price
+            difference = abs(short_sma - long_sma)
+
+            print(f"Current price: {price:.2f} | Short SMA: {short_sma:.2f} | Long SMA: {long_sma:.2f}")
+            print(f"Difference: {difference:.4f} | Required SMA ga0p: {required_sma_gap:.4f}")
+            logging.info(f"Price: {price:.2f}, Short SMA: {short_sma:.2f}, Long SMA: {long_sma:.2f}, Diff: {difference:.4f}")
+
+            if in_position:
+                stop_loss_price = entry_price * (1 - stop_loss_percent)
+                take_profit_price = entry_price * (1 + take_profit_percent)
+
+                if price <= stop_loss_price:
+                    print(f"Stop Loss Triggered! Selling at {price:.2f}")
+                    logging.info(f"Stop Loss Triggered at {price:.2f}")
+                    quantity = calculate_quantity(symbol, price)
+
+                    if quantity:
+                        place_sell_order(symbol, quantity)
+                        in_position = False
+                        entry_price = None
+
+                elif price >= take_profit_price:
+                    print(f"Take Profit Triggered! Selling at {price:.2f}")
+                    logging.info(f"Take Profit Triggered! Selling at {price:.2f}")
+                    quantity = calculate_quantity(symbol, price)
+
+                    if quantity:
+                        place_sell_order(symbol, quantity)
+                        in_position = False
+                        entry_price = None
+
+            if not in_position and short_sma > long_sma and difference > required_sma_gap:
+                print("Buy signal! Short SMA crossed above Long SMA.")
+                logging.info("Buy signal detected. Executing buy.")
+                email_content = (
+                    f"Buy Signal 🚀\n"
+                    f"Trading Pair: {symbol}\n"
+                    f"Price: {price:.2f}\n"
+                    f"Short SMA: {short_sma:.2f}\n"
+                    f"Long SMA: {long_sma:.2f}\n"
+                    f"SMA Gap: {difference:.4f}"
+                )
+                send_email("Buy Alert 🚀", email_content, "buy")
+                quantity = calculate_quantity(symbol, price)
+
+                if quantity:
+                    order = place_buy_order(symbol, quantity)
+
+                    if order:
+                        entry_price = float(order['fills'][0]['price'])
+                        in_position = True
+                        logging.info(f"Buy order filled at {entry_price:.2f}")
+
+            elif in_position and short_sma < long_sma and difference > required_sma_gap:
+                print("Sell signal! Short SMA crossed below Long SMA.")
+                logging.info("Sell signal detected. Executing sell.")
+                email_content = (
+                    f"Sell Signal 💸\n"
+                    f"Trading Pair: {symbol}\n"
+                    f"Price: {price:.2f}\n"
+                    f"Short SMA: {short_sma:.2f}\n"
+                    f"Long SMA: {long_sma:.2f}\n"
+                    f"SMA Gap: {difference:.4f}"
+                )
+                send_email("Sell Alert 💸", email_content, "sell")
+                quantity = calculate_quantity(symbol, price)
+
+                if quantity:
+                    place_sell_order(symbol, quantity)
+                    in_position = False
+                    entry_price = None
+                    logging.info(f"Sell order placed due to SMA crossover at {price:.2f}")
+
+            else:
+                print("No strong signal. Holding position...")
+                logging.info("No trade signal. Holding...")
+
+            time.sleep(60)
+
+        except Exception as e:
+            print(f"Unexpected error in trading loop: {e}")
+            logging.error(f"Unexpected error in trading loop: {e}")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    trading_bot()
