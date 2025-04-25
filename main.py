@@ -26,6 +26,11 @@ if not API_KEY or not SECRET_KEY:
 if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
     raise ValueError("⚠️ Email credentials are not set in the environment variables. Exiting...")
 
+# === Global variables for Trading Signal Cooldown ===
+last_buy_time = None
+last_sell_time = None
+trade_cooldown = timedelta(minutes=5) # Cooldown period for trades (e.g., 5 minutes)
+
 # === Global variables for Email alerts cooldown ===
 last_buy_alert_time = None
 last_sell_alert_time = None
@@ -105,43 +110,26 @@ def is_connected():
 
         return False
 
-# === Price Fetch with Rate Limit Handling ===
-def get_current_price(symbol, retries=5):
+# === fetch price and SMA together
+def get_price_and_sma(symbol, interval = '1m', limit = 20, retries = 5):
     for attempt in range(retries):
         try:
-            ticker = client.get_symbol_ticker(symbol=symbol)
-            return float(ticker['price'])
+            # fetch candlestick data
+            candles = client.get_klines(symbol = symbol, interval = interval, limit = limit)
+            closes = [float(candle[4]) for candle in candles] # Closing prices
 
-        except BinanceAPIException as e:
-            if e.status_code == 429:  # HTTP 429: Too Many Requests
-                print("⚠️ Rate limit exceeded. Retrying...")
-                logging.warning("Rate limit exceeded. Retrying...")
-                time.sleep(2)  # Short pause before retry
-            else:
-                print(f"Binance API Exception: {e}")
-                logging.error(f"Binance API Exception: {e}")
-                break
+            # calculate the current price as the latest closing price
+            current_price = closes[-1]
 
-        except Exception as e:
-            print(f"Error fetching price: {e}")
-            logging.error(f"Error fetching price: {e}")
-            break
-
-    return None
-
-# === SMA Calculation with Rate Limit Handling ===
-def get_moving_averages(symbol, interval='1m', limit=20, retries=5):
-    for attempt in range(retries):
-        try:
-            candles = client.get_klines(symbol=symbol, interval=interval, limit=limit)
-            closes = [float(candle[4]) for candle in candles]
+            # calculate short and long SMAs
             short_sma = np.mean(closes[-5:])
             long_sma = np.mean(closes[-10:])
-            return short_sma, long_sma
+
+            return current_price, short_sma, long_sma
 
         except BinanceAPIException as e:
-            if e.status_code == 429:  # HTTP 429: Too Many Requests
-                wait_time = 2 ** attempt  # Exponential backoff
+            if e.status_code == 429: # HTTP 429: Too many requests
+                wait_time = 2 ** attempt # Exponential backoff
                 print(f"⚠️ Rate limit exceeded. Retrying in {wait_time} seconds...")
                 logging.warning(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
@@ -151,11 +139,11 @@ def get_moving_averages(symbol, interval='1m', limit=20, retries=5):
                 break
 
         except Exception as e:
-            print(f"Error fetching moving averages: {e}")
-            logging.error(f"Error fetching moving averages: {e}")
-            break
+            print(f"Error fetching price and SMAs: {e}")
+            logging.error(f"Error fetching price and SMAs: {e}")
 
-    return None, None
+    return None, None, None
+
 
 # === Calculate Quantity ===
 def calculate_quantity(symbol, price):
@@ -172,7 +160,7 @@ def calculate_quantity(symbol, price):
         info = client.get_symbol_info(symbol)
         if not info:
             print(f"⚠️ Unable to fetch symbol info for {symbol}. Skipping trade.")
-            logging.warning("Unable to fetch symbol info for {symbol}. Skipping trade.")
+            logging.warning(f"Unable to fetch symbol info for {symbol}. Skipping trade.")
 
             return None
 
@@ -194,6 +182,8 @@ def calculate_quantity(symbol, price):
         if notional_value < min_notional:
             print(f"⚠️ Quantity too small (${notional_value:.2f} < ${min_notional:.2f})")
             logging.warning(f"⚠️ Quantity too small (${notional_value:.2f} < ${min_notional:.2f})")
+            logging.info(
+                f"Available balance: ${free_balance:.2f}, Risk amount: ${risk_amount:.2f}, Price: ${price:.2f}")
 
             return None
 
@@ -207,7 +197,6 @@ def calculate_quantity(symbol, price):
         logging.error(f"Error calculating quantity: {e}")
         return None
 
-# === Place Buy Order ===
 # === Place Buy Order ===
 def place_buy_order(symbol, quantity):
     try:
@@ -259,8 +248,34 @@ def place_sell_order(symbol, quantity):
 
     return None  # None is returned if any exception occurs
 
+# == factor_stop_loss_and_take_profit ===
+def calculate_stop_loss_and_take_profit(
+        entry_price,
+        stop_loss_percent,
+        take_profit_percent,
+        slippage_percent=0.001,
+        fee_percent=0.001):
+    """
+    Calculating stop-loss and take-profit prices, factoring in slippage and fees.
+
+    :param entry_price: The entry price of the trade.
+    :param stop_loss_percent: The percentage for stop-loss (e.g., 0.01 for 1%).
+    :param take_profit_percent: The percentage for take-profit (e.g., 0.02 for 2%).
+    :param slippage_percent: The assumed slippage percentage (default is 0.1%).
+    :param fee_percent: The trading fee percentage per trade (default is 0.1%).
+    :return: Adjusted stop-loss and take-profit prices.
+    """
+
+    # adjust stop-loss for slippage and fees
+    stop_loss_price = entry_price * (1 - stop_loss_percent) * (1 - slippage_percent - fee_percent)
+
+    # adjust take_profit for slippage and fees
+    take_profit_price = entry_price * (1 + take_profit_percent) * (1 - slippage_percent - fee_percent)
+
+    return stop_loss_price, take_profit_price
+
 def trading_bot():
-    global entry_price
+    global entry_price, last_sell_time, last_buy_time
     in_position = False
 
     while True:
@@ -271,8 +286,8 @@ def trading_bot():
                 time.sleep(60)
                 continue
 
-            price = get_current_price(symbol)
-            short_sma, long_sma = get_moving_averages(symbol)
+            # fetch price and SMA data together
+            price, short_sma, long_sma = get_price_and_sma(symbol)
 
             if price is None or short_sma is None or long_sma is None:
                 print("Missing data. Skipping this cycle.")
@@ -287,31 +302,59 @@ def trading_bot():
             print(f"Difference: {difference:.4f} | Required SMA ga0p: {required_sma_gap:.4f}")
             logging.info(f"Price: {price:.2f}, Short SMA: {short_sma:.2f}, Long SMA: {long_sma:.2f}, Diff: {difference:.4f}")
 
+            now = datetime.now()
+
             if in_position:
-                stop_loss_price = entry_price * (1 - stop_loss_percent)
-                take_profit_price = entry_price * (1 + take_profit_percent)
+                 # factoring in slippage and fees for stop-loss and take-profit
+
+                (stop_loss_price,
+                 take_profit_price) = calculate_stop_loss_and_take_profit(
+                    entry_price,
+                    stop_loss_percent,
+                    take_profit_percent
+                )
 
                 if price <= stop_loss_price:
+                    # Check cooldown for sell signals
+                    if last_sell_time and now - last_sell_time < trade_cooldown:
+                        print("⚠️ Sell signal skipped due to cooldown.")
+                        logging.info("Sell signal skipped due to cooldown.")
+                        continue
+
                     print(f"Stop Loss Triggered! Selling at {price:.2f}")
                     logging.info(f"Stop Loss Triggered at {price:.2f}")
                     quantity = calculate_quantity(symbol, price)
 
                     if quantity:
                         place_sell_order(symbol, quantity)
+                        last_sell_time = now # Update sell cooldown
                         in_position = False
                         entry_price = None
 
                 elif price >= take_profit_price:
+                    # Check cooldown for sell signals
+                    if last_sell_time and now - last_sell_time < trade_cooldown:
+                        print("⚠️ Sell signal skipped due to cooldown.")
+                        logging.info("Sell signal skipped due to cooldown.")
+                        continue
+
                     print(f"Take Profit Triggered! Selling at {price:.2f}")
                     logging.info(f"Take Profit Triggered! Selling at {price:.2f}")
                     quantity = calculate_quantity(symbol, price)
 
                     if quantity:
                         place_sell_order(symbol, quantity)
+                        last_sell_time = now  # Update sell cooldown
                         in_position = False
                         entry_price = None
 
             if not in_position and short_sma > long_sma and difference > required_sma_gap:
+                # Check cooldown for buy signals
+                if last_buy_time and now - last_buy_time < trade_cooldown:
+                    print("⚠️ Buy signal skipped due to cooldown.")
+                    logging.info("Buy signal skipped due to cooldown.")
+                    continue
+
                 print("Buy signal! Short SMA crossed above Long SMA.")
                 logging.info("Buy signal detected. Executing buy.")
                 email_content = (
@@ -330,10 +373,17 @@ def trading_bot():
 
                     if order:
                         entry_price = float(order['fills'][0]['price'])
+                        last_buy_time = now  # Update buy cooldown
                         in_position = True
                         logging.info(f"Buy order filled at {entry_price:.2f}")
 
             elif in_position and short_sma < long_sma and difference > required_sma_gap:
+                # Check cooldown for sell signals
+                if last_sell_time and now - last_sell_time < trade_cooldown:
+                    print("⚠️ Sell signal skipped due to cooldown.")
+                    logging.info("Sell signal skipped due to cooldown.")
+                    continue
+
                 print("Sell signal! Short SMA crossed below Long SMA.")
                 logging.info("Sell signal detected. Executing sell.")
                 email_content = (
@@ -349,6 +399,7 @@ def trading_bot():
 
                 if quantity:
                     place_sell_order(symbol, quantity)
+                    last_sell_time = now  # Update sell cooldown
                     in_position = False
                     entry_price = None
                     logging.info(f"Sell order placed due to SMA crossover at {price:.2f}")
