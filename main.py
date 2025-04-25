@@ -92,7 +92,9 @@ except requests.exceptions.ConnectionError:
     logging.warning("No internet connection. Binance API not available.")
     client = None
 
-symbol = "ETHUSDT"
+# === trading pairs ===
+symbols = ["ETHUSDT", "BTCUSDT", "BNBUSDT"]
+
 risk_percent = 0.01 # 1% of balance
 min_signal_strength = 0.005  # 0.5% of current price
 stop_loss_percent = 0.01
@@ -111,7 +113,7 @@ def is_connected():
         return False
 
 # === fetch price and SMA together
-def get_price_and_sma(symbol, interval = '1m', limit = 20, retries = 5):
+def get_price_and_sma(symbol, interval = '15m', limit = 20, retries = 5):
     for attempt in range(retries):
         try:
             # fetch candlestick data
@@ -276,7 +278,8 @@ def calculate_stop_loss_and_take_profit(
 
 def trading_bot():
     global entry_price, last_sell_time, last_buy_time
-    in_position = False
+    in_position = {symbol: False for symbol in symbols} # track positions for each trading pair
+    entry_prices = {symbol: None for symbol in symbols} # Track entry prices for each trading pair
 
     while True:
         try:
@@ -286,134 +289,137 @@ def trading_bot():
                 time.sleep(60)
                 continue
 
-            # fetch price and SMA data together
-            price, short_sma, long_sma = get_price_and_sma(symbol)
+            for symbol in symbols: # loop through each trading pair
+                print(f"processing {symbol}...")
+                logging.info(f"processing {symbol}...")
 
-            if price is None or short_sma is None or long_sma is None:
-                print("Missing data. Skipping this cycle.")
-                logging.warning("Missing data. Skipping cycle.")
-                time.sleep(60)
-                continue
+                # Fetching price and SMA data for the trading pairs
+                price, short_sma, long_sma = get_price_and_sma(symbol)
 
-            required_sma_gap = min_signal_strength * price
-            difference = abs(short_sma - long_sma)
+                if price is None or short_sma is None or long_sma is None:
+                    print("Missing data. Skipping this cycle.")
+                    logging.warning("Missing data. Skipping cycle.")
+                    time.sleep(60)
+                    continue
 
-            print(f"Current price: {price:.2f} | Short SMA: {short_sma:.2f} | Long SMA: {long_sma:.2f}")
-            print(f"Difference: {difference:.4f} | Required SMA ga0p: {required_sma_gap:.4f}")
-            logging.info(f"Price: {price:.2f}, Short SMA: {short_sma:.2f}, Long SMA: {long_sma:.2f}, Diff: {difference:.4f}")
+                required_sma_gap = min_signal_strength * price
+                difference = abs(short_sma - long_sma)
 
-            now = datetime.now()
+                print(f"Current price: {price:.2f} | Short SMA: {short_sma:.2f} | Long SMA: {long_sma:.2f}")
+                print(f"Difference: {difference:.4f} | Required SMA ga0p: {required_sma_gap:.4f}")
+                logging.info(f"Price: {price:.2f}, Short SMA: {short_sma:.2f}, Long SMA: {long_sma:.2f}, Diff: {difference:.4f}")
 
-            if in_position:
-                 # factoring in slippage and fees for stop-loss and take-profit
+                now = datetime.now()
 
-                (stop_loss_price,
-                 take_profit_price) = calculate_stop_loss_and_take_profit(
-                    entry_price,
-                    stop_loss_percent,
-                    take_profit_percent
-                )
+                if in_position[symbol]:
+                     # factoring in slippage and fees for stop-loss and take-profit
+                    (stop_loss_price,
+                     take_profit_price) = calculate_stop_loss_and_take_profit(
+                        entry_price[symbol],
+                        stop_loss_percent,
+                        take_profit_percent
+                    )
 
-                if price <= stop_loss_price:
-                    # Check cooldown for sell signals
-                    if last_sell_time and now - last_sell_time < trade_cooldown:
-                        print("⚠️ Sell signal skipped due to cooldown.")
-                        logging.info("Sell signal skipped due to cooldown.")
+                    if price <= stop_loss_price:
+                        # Check cooldown for sell signals
+                        if last_sell_time and now - last_sell_time < trade_cooldown:
+                            print("⚠️ Sell signal skipped due to cooldown.")
+                            logging.info("Sell signal skipped due to cooldown.")
+                            continue
+
+                        print(f"Stop Loss Triggered! Selling at {price:.2f}")
+                        logging.info(f"Stop Loss Triggered at {price:.2f}")
+                        quantity = calculate_quantity(symbol, price)
+
+                        if quantity:
+                            place_sell_order(symbol, quantity)
+                            last_sell_time = now # Update sell cooldown
+                            in_position[symbol] = False
+                            entry_price[symbol] = None
+
+                    elif price >= take_profit_price:
+                        # Check cooldown for sell signals
+                        if last_sell_time and now - last_sell_time < trade_cooldown:
+                            print("⚠️ Sell signal skipped due to cooldown.")
+                            logging.info("Sell signal skipped due to cooldown.")
+                            continue
+
+                        print(f"Take Profit Triggered! Selling at {price:.2f}")
+                        logging.info(f"Take Profit Triggered! Selling at {price:.2f}")
+                        quantity = calculate_quantity(symbol, price)
+
+                        if quantity:
+                            place_sell_order(symbol, quantity)
+                            last_sell_time = now  # Update sell cooldown
+                            in_position[symbol] = False
+                            entry_price[symbol] = None
+
+                if not in_position and short_sma > long_sma and difference > required_sma_gap:
+                    # Check cooldown for buy signals
+                    if last_buy_time and now - last_buy_time < trade_cooldown:
+                        print("⚠️ Buy signal skipped due to cooldown.")
+                        logging.info("Buy signal skipped due to cooldown.")
                         continue
 
-                    print(f"Stop Loss Triggered! Selling at {price:.2f}")
-                    logging.info(f"Stop Loss Triggered at {price:.2f}")
+                    print("Buy signal! Short SMA crossed above Long SMA.")
+                    logging.info("Buy signal detected. Executing buy.")
+                    email_content = (
+                        f"Buy Signal 🚀\n"
+                        f"Trading Pair: {symbol}\n"
+                        f"Price: {price:.2f}\n"
+                        f"Short SMA: {short_sma:.2f}\n"
+                        f"Long SMA: {long_sma:.2f}\n"
+                        f"SMA Gap: {difference:.4f}"
+                    )
+                    send_email("Buy Alert 🚀", email_content, "buy")
                     quantity = calculate_quantity(symbol, price)
 
                     if quantity:
-                        place_sell_order(symbol, quantity)
-                        last_sell_time = now # Update sell cooldown
-                        in_position = False
-                        entry_price = None
+                        order = place_buy_order(symbol, quantity)
 
-                elif price >= take_profit_price:
+                        if order:
+                            entry_price[symbol] = float(order['fills'][0]['price'])
+                            last_buy_time = now  # Update buy cooldown
+                            in_position[symbol] = True
+                            logging.info(f"Buy order filled at {entry_price[symbol]:.2f}")
+
+                elif in_position and short_sma < long_sma and difference > required_sma_gap:
                     # Check cooldown for sell signals
                     if last_sell_time and now - last_sell_time < trade_cooldown:
                         print("⚠️ Sell signal skipped due to cooldown.")
                         logging.info("Sell signal skipped due to cooldown.")
                         continue
 
-                    print(f"Take Profit Triggered! Selling at {price:.2f}")
-                    logging.info(f"Take Profit Triggered! Selling at {price:.2f}")
+                    print("Sell signal! Short SMA crossed below Long SMA.")
+                    logging.info("Sell signal detected. Executing sell.")
+                    email_content = (
+                        f"Sell Signal 💸\n"
+                        f"Trading Pair: {symbol}\n"
+                        f"Price: {price:.2f}\n"
+                        f"Short SMA: {short_sma:.2f}\n"
+                        f"Long SMA: {long_sma:.2f}\n"
+                        f"SMA Gap: {difference:.4f}"
+                    )
+                    send_email("Sell Alert 💸", email_content, "sell")
                     quantity = calculate_quantity(symbol, price)
 
                     if quantity:
                         place_sell_order(symbol, quantity)
                         last_sell_time = now  # Update sell cooldown
-                        in_position = False
-                        entry_price = None
+                        in_position[symbol] = False
+                        entry_price[symbol] = None
+                        logging.info(f"Sell order placed due to SMA crossover at {price:.2f}")
 
-            if not in_position and short_sma > long_sma and difference > required_sma_gap:
-                # Check cooldown for buy signals
-                if last_buy_time and now - last_buy_time < trade_cooldown:
-                    print("⚠️ Buy signal skipped due to cooldown.")
-                    logging.info("Buy signal skipped due to cooldown.")
-                    continue
-
-                print("Buy signal! Short SMA crossed above Long SMA.")
-                logging.info("Buy signal detected. Executing buy.")
-                email_content = (
-                    f"Buy Signal 🚀\n"
-                    f"Trading Pair: {symbol}\n"
-                    f"Price: {price:.2f}\n"
-                    f"Short SMA: {short_sma:.2f}\n"
-                    f"Long SMA: {long_sma:.2f}\n"
-                    f"SMA Gap: {difference:.4f}"
-                )
-                send_email("Buy Alert 🚀", email_content, "buy")
-                quantity = calculate_quantity(symbol, price)
-
-                if quantity:
-                    order = place_buy_order(symbol, quantity)
-
-                    if order:
-                        entry_price = float(order['fills'][0]['price'])
-                        last_buy_time = now  # Update buy cooldown
-                        in_position = True
-                        logging.info(f"Buy order filled at {entry_price:.2f}")
-
-            elif in_position and short_sma < long_sma and difference > required_sma_gap:
-                # Check cooldown for sell signals
-                if last_sell_time and now - last_sell_time < trade_cooldown:
-                    print("⚠️ Sell signal skipped due to cooldown.")
-                    logging.info("Sell signal skipped due to cooldown.")
-                    continue
-
-                print("Sell signal! Short SMA crossed below Long SMA.")
-                logging.info("Sell signal detected. Executing sell.")
-                email_content = (
-                    f"Sell Signal 💸\n"
-                    f"Trading Pair: {symbol}\n"
-                    f"Price: {price:.2f}\n"
-                    f"Short SMA: {short_sma:.2f}\n"
-                    f"Long SMA: {long_sma:.2f}\n"
-                    f"SMA Gap: {difference:.4f}"
-                )
-                send_email("Sell Alert 💸", email_content, "sell")
-                quantity = calculate_quantity(symbol, price)
-
-                if quantity:
-                    place_sell_order(symbol, quantity)
-                    last_sell_time = now  # Update sell cooldown
-                    in_position = False
-                    entry_price = None
-                    logging.info(f"Sell order placed due to SMA crossover at {price:.2f}")
-
-            else:
-                print("No strong signal. Holding position...")
-                logging.info("No trade signal. Holding...")
+                else:
+                    print("No strong signal. Holding position...")
+                    logging.info("No trade signal. Holding...")
 
             time.sleep(60)
 
         except Exception as e:
-            print(f"Unexpected error in trading loop: {e}")
-            logging.error(f"Unexpected error in trading loop: {e}")
-            time.sleep(60)
+                print(f"Unexpected error in trading loop: {e}")
+                logging.error(f"Unexpected error in trading loop: {e}")
+                time.sleep(60)
 
 if __name__ == "__main__":
     trading_bot()
